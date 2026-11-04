@@ -56,16 +56,7 @@ jobs:
 
           # Add a capture-phase fallback for touch/pointer events in Android WebView.
           needle = "$('[data-close-modal]').forEach(x=>x.addEventListener('click',closeDetail));"
-          replacement = needle + """
- document.addEventListener('pointerdown',e=>{
-   const close=e.target.closest?.('[data-close-modal]');
-   if(close){ e.preventDefault(); e.stopPropagation(); closeDetail(); }
- },true);
- document.addEventListener('touchstart',e=>{
-   const close=e.target.closest?.('[data-close-modal]');
-   if(close){ e.preventDefault(); e.stopPropagation(); closeDetail(); }
- },{capture:true,passive:false});
-"""
+          replacement = needle + "\n document.addEventListener('pointerdown',e=>{const close=e.target.closest?.('[data-close-modal]');if(close){e.preventDefault();e.stopPropagation();closeDetail();}},true);\n document.addEventListener('touchstart',e=>{const close=e.target.closest?.('[data-close-modal]');if(close){e.preventDefault();e.stopPropagation();closeDetail();}},{capture:true,passive:false});"
           if needle in s and "pointerdown',e=>" not in s:
               s = s.replace(needle, replacement, 1)
 
@@ -101,20 +92,7 @@ jobs:
           # Function to resend signup confirmation.
           fn_marker = "async function forgotPassword(){"
           if "async function resendConfirmation()" not in s:
-              resend_fn = """async function resendConfirmation(){
- const email=$('#authEmail').value.trim();
- if(!email || !/^\\S+@\\S+\\.\\S+$/.test(email)) return alertBox($('#authAlert'),'Saisissez votre adresse e-mail.','err');
- const btn=$('#resendConfirmBtn'); setBusy(btn,true,'Envoi…');
- try{
-   const {error}=await sb.auth.resend({type:'signup',email,options:{emailRedirectTo:'https://cedxv38-svg.github.io/USV-troc/'}});
-   if(error) throw error;
-   alertBox($('#authAlert'),'E-mail de confirmation renvoyé. Vérifiez aussi les spams.','ok');
- }catch(e){
-   alertBox($('#authAlert'),e.message||'Impossible de renvoyer l’e-mail de confirmation.','err');
- }finally{ setBusy(btn,false); }
-}
-
-"""
+              resend_fn = "async function resendConfirmation(){\\n const email=$('#authEmail').value.trim();\\n if(!email || !/^\\\\S+@\\\\S+\\\\.\\\\S+$/.test(email)) return alertBox($('#authAlert'),'Saisissez votre adresse e-mail.','err');\\n const btn=$('#resendConfirmBtn'); setBusy(btn,true,'Envoi…');\\n try{\\n   const {error}=await sb.auth.resend({type:'signup',email,options:{emailRedirectTo:'https://cedxv38-svg.github.io/USV-troc/'}});\\n   if(error) throw error;\\n   alertBox($('#authAlert'),'E-mail de confirmation renvoyé. Vérifiez aussi les spams.','ok');\\n }catch(e){\\n   alertBox($('#authAlert'),e.message||'Impossible de renvoyer l’e-mail de confirmation.','err');\\n }finally{ setBusy(btn,false); }\\n}\\n\\n"
               s = s.replace(fn_marker, resend_fn + fn_marker, 1)
 
           # After signup, make resend visible.
