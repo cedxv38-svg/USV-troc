@@ -27,35 +27,86 @@ jobs:
           gradle-version: '8.11.1'
 
       - name: Extract project
+        shell: bash
         run: |
           rm -rf android-project
           mkdir android-project
           unzip -q USV-Troc-1.0.17-source-corrected.zip -d android-project
-          echo "PROJECT_DIR=$(find android-project -mindepth 1 -maxdepth 1 -type d | head -n 1)" >> "$GITHUB_ENV"
+          PROJECT_DIR="$(find android-project -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project dir: $PROJECT_DIR"
+          find "$PROJECT_DIR" -maxdepth 2 -type f | sort
 
       - name: Restore upload keystore
+        shell: bash
         env:
           USV_KEYSTORE_B64: ${{ secrets.USV_KEYSTORE_B64 }}
         run: |
-          echo "$USV_KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/usv-troc-upload.jks"
+          test -n "$USV_KEYSTORE_B64"
+          printf '%s' "$USV_KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/usv-troc-upload.jks"
+          test -s "$GITHUB_WORKSPACE/usv-troc-upload.jks"
+          keytool -list -keystore "$GITHUB_WORKSPACE/usv-troc-upload.jks" -storepass "${{ secrets.USV_STORE_PASSWORD }}" -alias "${{ secrets.USV_KEY_ALIAS }}"
+
+      - name: Fix release signing configuration
+        shell: bash
+        run: |
+          cat > "$PROJECT_DIR/app/build.gradle" <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'fr.usv.troc'
+              compileSdk 35
+
+              defaultConfig {
+                  applicationId 'fr.usv.troc'
+                  minSdk 24
+                  targetSdk 35
+                  versionCode 18
+                  versionName '1.0.17'
+              }
+
+              signingConfigs {
+                  release {
+                      storeFile file(System.getenv('USV_STORE_FILE'))
+                      storePassword System.getenv('USV_STORE_PASSWORD')
+                      keyAlias System.getenv('USV_KEY_ALIAS')
+                      keyPassword System.getenv('USV_KEY_PASSWORD')
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          EOF
 
       - name: Build signed release AAB
+        shell: bash
         env:
+          USV_STORE_FILE: ${{ github.workspace }}/usv-troc-upload.jks
           USV_STORE_PASSWORD: ${{ secrets.USV_STORE_PASSWORD }}
           USV_KEY_ALIAS: ${{ secrets.USV_KEY_ALIAS }}
           USV_KEY_PASSWORD: ${{ secrets.USV_KEY_PASSWORD }}
         run: |
           cd "$PROJECT_DIR"
-          gradle --no-daemon clean bundleRelease \
-            -PUSV_STORE_FILE="$GITHUB_WORKSPACE/usv-troc-upload.jks" \
-            -PUSV_STORE_PASSWORD="$USV_STORE_PASSWORD" \
-            -PUSV_KEY_ALIAS="$USV_KEY_ALIAS" \
-            -PUSV_KEY_PASSWORD="$USV_KEY_PASSWORD"
+          gradle --no-daemon clean bundleRelease --stacktrace
 
-      - name: Verify AAB exists
+      - name: Verify AAB
+        shell: bash
+        env:
+          USV_STORE_PASSWORD: ${{ secrets.USV_STORE_PASSWORD }}
+          USV_KEY_ALIAS: ${{ secrets.USV_KEY_ALIAS }}
         run: |
-          test -f "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab"
-          ls -lh "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab"
+          AAB="$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab"
+          test -f "$AAB"
+          ls -lh "$AAB"
+          jarsigner -verify -verbose -certs "$AAB"
 
       - name: Upload AAB
         uses: actions/upload-artifact@v4
