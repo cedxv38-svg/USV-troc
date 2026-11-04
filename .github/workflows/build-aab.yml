@@ -60,12 +60,12 @@ jobs:
 
           android {
               namespace 'fr.usv.troc'
-              compileSdk 35
+              compileSdk 36
 
               defaultConfig {
                   applicationId 'fr.usv.troc'
                   minSdk 24
-                  targetSdk 35
+                  targetSdk 36
                   versionCode 18
                   versionName '1.0.17'
               }
