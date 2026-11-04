@@ -105,6 +105,27 @@ jobs:
           print("Patched:", p)
           PY
 
+      - name: Bundle Supabase client locally for Android WebView
+        shell: bash
+        run: |
+          ASSET_DIR="$PROJECT_DIR/app/src/main/assets"
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" \
+            -o "$ASSET_DIR/supabase.js"
+          test -s "$ASSET_DIR/supabase.js"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          p = Path(os.environ["PROJECT_DIR"]) / "app/src/main/assets/index.html"
+          s = p.read_text(encoding="utf-8")
+          s = s.replace(
+              '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>',
+              '<script src="./supabase.js"></script>'
+          )
+          p.write_text(s, encoding="utf-8")
+          print("Supabase JS bundled locally:", p)
+          PY
+
       - name: Restore upload keystore
         shell: bash
         env:
@@ -143,8 +164,8 @@ jobs:
                   applicationId 'fr.usv.troc'
                   minSdk 26
                   targetSdk 36
-                  versionCode 20
-                  versionName '1.0.19'
+                  versionCode 21
+                  versionName '1.0.20'
               }
 
               signingConfigs {
@@ -345,7 +366,7 @@ jobs:
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
-          name: USV-Troc-v1.0.19-code20-API36-from-1.0.10
+          name: USV-Troc-v1.0.20-code21-API36-from-1.0.10
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 30
@@ -354,9 +375,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p releases
-          cp "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab" "releases/USV-Troc-v1.0.19-code20-API36.aab"
+          cp "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab" "releases/USV-Troc-v1.0.20-code21-API36.aab"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/USV-Troc-v1.0.19-code20-API36.aab
-          git commit -m "Publish USV Troc 1.0.19 code 20 API36 from 1.0.10 base" || exit 0
+          git add releases/USV-Troc-v1.0.20-code21-API36.aab
+          git commit -m "Publish USV Troc 1.0.20 code 21 API36 from 1.0.10 base" || exit 0
           git push
