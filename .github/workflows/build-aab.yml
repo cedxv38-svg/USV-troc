@@ -1,5 +1,8 @@
 name: Build USV Troc Android AAB
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
   push:
@@ -115,3 +118,14 @@ jobs:
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish AAB in repository
+        shell: bash
+        run: |
+          mkdir -p releases
+          cp "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab" "releases/USV-Troc-v1.0.17-code18.aab"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add releases/USV-Troc-v1.0.17-code18.aab
+          git commit -m "Publish USV Troc 1.0.17 code 18 AAB" || exit 0
+          git push
