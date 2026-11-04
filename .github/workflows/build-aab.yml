@@ -43,7 +43,7 @@ jobs:
           USV_KEYSTORE_B64: ${{ secrets.USV_KEYSTORE_B64 }}
         run: |
           test -n "$USV_KEYSTORE_B64"
-          printf '%s' "$USV_KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/usv-troc-upload.jks"
+          printf '%s' "$USV_KEYSTORE_B64" | tr -cd 'A-Za-z0-9+/=' | base64 --decode > "$GITHUB_WORKSPACE/usv-troc-upload.jks"
           test -s "$GITHUB_WORKSPACE/usv-troc-upload.jks"
           keytool -list -keystore "$GITHUB_WORKSPACE/usv-troc-upload.jks" -storepass "${{ secrets.USV_STORE_PASSWORD }}" -alias "${{ secrets.USV_KEY_ALIAS }}"
 
