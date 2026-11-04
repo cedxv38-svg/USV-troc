@@ -39,6 +39,93 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Project dir: $PROJECT_DIR"
 
+      - name: Patch close button and auth email flow
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("$PROJECT_DIR/app/src/main/assets/index.html")
+          s = p.read_text(encoding="utf-8")
+
+          # 1) Make product-sheet close button independent from delegated listeners.
+          s = s.replace(
+              '<button class="sheet-close" data-close-modal type="button">×</button>',
+              '<button class="sheet-close" data-close-modal type="button" onclick="closeDetail();return false;" ontouchstart="closeDetail();return false;" aria-label="Fermer">×</button>'
+          )
+
+          # Add a capture-phase fallback for touch/pointer events in Android WebView.
+          needle = "$('[data-close-modal]').forEach(x=>x.addEventListener('click',closeDetail));"
+          replacement = needle + """
+ document.addEventListener('pointerdown',e=>{
+   const close=e.target.closest?.('[data-close-modal]');
+   if(close){ e.preventDefault(); e.stopPropagation(); closeDetail(); }
+ },true);
+ document.addEventListener('touchstart',e=>{
+   const close=e.target.closest?.('[data-close-modal]');
+   if(close){ e.preventDefault(); e.stopPropagation(); closeDetail(); }
+ },{capture:true,passive:false});
+"""
+          if needle in s and "pointerdown',e=>" not in s:
+              s = s.replace(needle, replacement, 1)
+
+          # 2) Use the dedicated USV-troc GitHub Pages URL for auth redirects.
+          s = s.replace(
+              "redirectTo:'https://cedxv38-svg.github.io/USV-Match-Analyzer/pwa/'",
+              "redirectTo:'https://cedxv38-svg.github.io/USV-troc/'"
+          )
+
+          # Add emailRedirectTo to sign-up.
+          old = "const {data,error}=await sb.auth.signUp({email,password,options:{data:{full_name,category,cgu_version:CGU_VERSION,cgu_accepted_at:acceptedAt,privacy_version:PRIVACY_VERSION,privacy_seen_at:privacySeenAt}}});"
+          new = "const {data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:'https://cedxv38-svg.github.io/USV-troc/',data:{full_name,category,cgu_version:CGU_VERSION,cgu_accepted_at:acceptedAt,privacy_version:PRIVACY_VERSION,privacy_seen_at:privacySeenAt}}});"
+          s = s.replace(old,new)
+
+          # Add resend confirmation button to auth screen if absent.
+          auth_btn = '<button id="forgotPasswordBtn" class="btn soft wide" type="button" style="margin-top:8px">Mot de passe oublié ?</button>'
+          resend_btn = auth_btn + '\n      <button id="resendConfirmBtn" class="btn soft wide hidden" type="button" style="margin-top:8px">Renvoyer l\'e-mail de confirmation</button>'
+          if 'id="resendConfirmBtn"' not in s:
+              s = s.replace(auth_btn, resend_btn)
+
+          # Bind resend button.
+          bind = "$('#forgotPasswordBtn').addEventListener('click',forgotPassword);"
+          bind_new = bind + "\n $('#resendConfirmBtn')?.addEventListener('click',resendConfirmation);"
+          if "resendConfirmation" not in s:
+              s = s.replace(bind, bind_new, 1)
+
+          # Show resend button after register, hide in login mode.
+          mode_line = "$('#forgotPasswordBtn').classList.toggle('hidden',register);"
+          if mode_line not in s:
+              target = "$('#rememberLine')?.classList.toggle('hidden',register);"
+              s = s.replace(target, target + "\n $('#forgotPasswordBtn')?.classList.toggle('hidden',register);\n $('#resendConfirmBtn')?.classList.toggle('hidden',!register);")
+
+          # Function to resend signup confirmation.
+          fn_marker = "async function forgotPassword(){"
+          if "async function resendConfirmation()" not in s:
+              resend_fn = """async function resendConfirmation(){
+ const email=$('#authEmail').value.trim();
+ if(!email || !/^\\S+@\\S+\\.\\S+$/.test(email)) return alertBox($('#authAlert'),'Saisissez votre adresse e-mail.','err');
+ const btn=$('#resendConfirmBtn'); setBusy(btn,true,'Envoi…');
+ try{
+   const {error}=await sb.auth.resend({type:'signup',email,options:{emailRedirectTo:'https://cedxv38-svg.github.io/USV-troc/'}});
+   if(error) throw error;
+   alertBox($('#authAlert'),'E-mail de confirmation renvoyé. Vérifiez aussi les spams.','ok');
+ }catch(e){
+   alertBox($('#authAlert'),e.message||'Impossible de renvoyer l’e-mail de confirmation.','err');
+ }finally{ setBusy(btn,false); }
+}
+
+"""
+              s = s.replace(fn_marker, resend_fn + fn_marker, 1)
+
+          # After signup, make resend visible.
+          success = "alertBox($('#authAlert'),'Compte créé. Vérifiez votre e-mail si une confirmation est demandée.','ok');"
+          success_new = "alertBox($('#authAlert'),'Compte créé. Un e-mail de confirmation a été demandé. Vérifiez votre boîte de réception et les spams.','ok'); $('#resendConfirmBtn')?.classList.remove('hidden');"
+          s = s.replace(success, success_new)
+
+          p.write_text(s, encoding="utf-8")
+          print("Patched:", p)
+          PY
+
       - name: Restore upload keystore
         shell: bash
         env:
@@ -77,8 +164,8 @@ jobs:
                   applicationId 'fr.usv.troc'
                   minSdk 26
                   targetSdk 36
-                  versionCode 19
-                  versionName '1.0.18'
+                  versionCode 20
+                  versionName '1.0.19'
               }
 
               signingConfigs {
@@ -279,7 +366,7 @@ jobs:
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
-          name: USV-Troc-v1.0.18-code19-API36-from-1.0.10
+          name: USV-Troc-v1.0.19-code20-API36-from-1.0.10
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 30
@@ -288,9 +375,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p releases
-          cp "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab" "releases/USV-Troc-v1.0.18-code19-API36.aab"
+          cp "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab" "releases/USV-Troc-v1.0.19-code20-API36.aab"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/USV-Troc-v1.0.18-code19-API36.aab
-          git commit -m "Publish USV Troc 1.0.18 code 19 API36 from 1.0.10 base" || exit 0
+          git add releases/USV-Troc-v1.0.19-code20-API36.aab
+          git commit -m "Publish USV Troc 1.0.19 code 20 API36 from 1.0.10 base" || exit 0
           git push
