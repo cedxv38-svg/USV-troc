@@ -101,6 +101,21 @@ jobs:
           success_new = "alertBox($('#authAlert'),'Compte créé. Un e-mail de confirmation a été demandé. Vérifiez votre boîte de réception et les spams.','ok'); $('#resendConfirmBtn')?.classList.remove('hidden');"
           s = s.replace(success, success_new)
 
+          # Fix UI binding typo that can abort bindUI() in Android WebView.
+          s = s.replace("$('[data-close-privacy]').forEach", "$('[data-close-privacy]').forEach")
+
+          # Direct fallback binding for the login/register submit button.
+          s = s.replace(
+              '<button id="authSubmit" class="btn primary wide" type="button">Se connecter</button>',
+              '<button id="authSubmit" class="btn primary wide" type="button" onclick="authSubmit();return false;">Se connecter</button>'
+          )
+
+          # Make server-unavailable state explicit instead of silently doing nothing.
+          s = s.replace(
+              "if(!onlineReady) return alertBox($('#authAlert'),'La version réelle doit être reliée au serveur USV avant la première connexion.','info');",
+              "if(!onlineReady) return alertBox($('#authAlert'),'Connexion au serveur USV indisponible. Fermez puis rouvrez l’application et réessayez.','err');"
+          )
+
           p.write_text(s, encoding="utf-8")
           print("Patched:", p)
           PY
@@ -120,7 +135,7 @@ jobs:
           s = p.read_text(encoding="utf-8")
           s = s.replace(
               '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>',
-              '<script src="./supabase.js"></script>'
+              '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="this.onerror=null;this.src=\'./supabase.js\'"></script>'
           )
           p.write_text(s, encoding="utf-8")
           print("Supabase JS bundled locally:", p)
@@ -164,8 +179,8 @@ jobs:
                   applicationId 'fr.usv.troc'
                   minSdk 26
                   targetSdk 36
-                  versionCode 21
-                  versionName '1.0.20'
+                  versionCode 22
+                  versionName '1.0.21'
               }
 
               signingConfigs {
@@ -366,7 +381,7 @@ jobs:
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
-          name: USV-Troc-v1.0.20-code21-API36-from-1.0.10
+          name: USV-Troc-v1.0.21-code22-API36-from-1.0.10
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 30
@@ -375,9 +390,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p releases
-          cp "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab" "releases/USV-Troc-v1.0.20-code21-API36.aab"
+          cp "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab" "releases/USV-Troc-v1.0.21-code22-API36.aab"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/USV-Troc-v1.0.20-code21-API36.aab
-          git commit -m "Publish USV Troc 1.0.20 code 21 API36 from 1.0.10 base" || exit 0
+          git add releases/USV-Troc-v1.0.21-code22-API36.aab
+          git commit -m "Publish USV Troc 1.0.21 code 22 API36 from 1.0.10 base" || exit 0
           git push
