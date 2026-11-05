@@ -291,7 +291,17 @@ jobs:
           USV_KEY_PASSWORD: ${{ secrets.USV_KEY_PASSWORD }}
         run: |
           cd "$PROJECT_DIR"
-          gradle --no-daemon clean bundleRelease --stacktrace
+          for attempt in 1 2 3 4; do
+            echo "Gradle build attempt $attempt/4"
+            if gradle --no-daemon clean bundleRelease --stacktrace; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              echo "Build failed, retrying after Maven rate-limit cooldown..."
+              sleep 45
+            fi
+          done
+          exit 1
 
       - name: Verify AAB contents
         shell: bash
