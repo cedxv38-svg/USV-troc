@@ -157,52 +157,13 @@ jobs:
           )
 
           # GLOBAL Android WebView interaction hardening for all app controls.
-          global_css = """
-<style id="android-touch-fix">
-button,a,[role="button"],input,select,textarea,label,.btn,.tab,.sheet-close,[data-close-modal],[data-close-rules],[data-close-privacy],[data-action]{
-  pointer-events:auto!important;
-  touch-action:manipulation!important;
-  -webkit-tap-highlight-color:rgba(0,0,0,0)!important;
-}
-button,a,[role="button"],.btn,.tab,.sheet-close{position:relative!important;z-index:50!important}
-.modal,.sheet,.auth-card,.panel,.card{pointer-events:auto!important}
-.hidden{pointer-events:none!important}
-</style>
-"""
+          global_css = "<style id=\"android-touch-fix\">button,a,[role=\"button\"],input,select,textarea,label,.btn,.tab,.sheet-close,[data-close-modal],[data-close-rules],[data-close-privacy],[data-action]{pointer-events:auto!important;touch-action:manipulation!important;-webkit-tap-highlight-color:rgba(0,0,0,0)!important}button,a,[role=\"button\"],.btn,.tab,.sheet-close{position:relative!important;z-index:50!important}.modal,.sheet,.auth-card,.panel,.card{pointer-events:auto!important}.hidden{pointer-events:none!important}</style>"
           if 'id="android-touch-fix"' not in s:
               s = s.replace('</head>', global_css + '\n</head>', 1)
 
           # Generic capture fallback: turn touch/pointer events into click for interactive elements
           # when Android WebView swallows the native click event.
-          fallback_js = r"""
-<script id="android-touch-fallback">
-(function(){
-  const SEL='button,a,[role="button"],.btn,.tab,.sheet-close,[data-close-modal],[data-close-rules],[data-close-privacy],[data-action]';
-  let lastTarget=null,lastTime=0;
-  function fire(el,e){
-    if(!el || el.disabled) return;
-    const now=Date.now();
-    if(lastTarget===el && now-lastTime<350) return;
-    lastTarget=el; lastTime=now;
-    try{
-      if(e){e.preventDefault();e.stopPropagation();}
-      if(typeof el.onclick==='function'){ el.onclick.call(el,e||new Event('click')); return; }
-      el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
-    }catch(err){console.error('android touch fallback',err);}
-  }
-  document.addEventListener('pointerup',function(e){
-    const el=e.target.closest&&e.target.closest(SEL);
-    if(el) fire(el,e);
-  },true);
-  document.addEventListener('touchend',function(e){
-    const t=e.changedTouches&&e.changedTouches[0];
-    const el=document.elementFromPoint(t?t.clientX:0,t?t.clientY:0);
-    const hit=el&&el.closest&&el.closest(SEL);
-    if(hit) fire(hit,e);
-  },{capture:true,passive:false});
-})();
-</script>
-"""
+          fallback_js = "<script id=\"android-touch-fallback\">(function(){const SEL='button,a,[role=\\\"button\\\"],.btn,.tab,.sheet-close,[data-close-modal],[data-close-rules],[data-close-privacy],[data-action]';let lastTarget=null,lastTime=0;function fire(el,e){if(!el||el.disabled)return;const now=Date.now();if(lastTarget===el&&now-lastTime<350)return;lastTarget=el;lastTime=now;try{if(e){e.preventDefault();e.stopPropagation();}if(typeof el.onclick==='function'){el.onclick.call(el,e||new Event('click'));return;}el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));}catch(err){console.error('android touch fallback',err);}}document.addEventListener('pointerup',function(e){const el=e.target.closest&&e.target.closest(SEL);if(el)fire(el,e);},true);document.addEventListener('touchend',function(e){const t=e.changedTouches&&e.changedTouches[0];const el=document.elementFromPoint(t?t.clientX:0,t?t.clientY:0);const hit=el&&el.closest&&el.closest(SEL);if(hit)fire(hit,e);},{capture:true,passive:false});})();</script>"
           if 'id="android-touch-fallback"' not in s:
               s = s.replace('</body>', fallback_js + '\n</body>', 1)
 
