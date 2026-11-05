@@ -5,10 +5,6 @@ permissions:
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'USV-Troc-1.0.17-source-corrected.zip'
-      - '.github/workflows/build-aab.yml'
 
 jobs:
   build:
@@ -29,7 +25,7 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Extract corrected web project
+      - name: Extract Android project skeleton
         shell: bash
         run: |
           rm -rf android-project
@@ -39,154 +35,20 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Project dir: $PROJECT_DIR"
 
-      - name: Patch close button and auth email flow
+      - name: Restore exact stable 1.0.10 interface
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
+          cat stable-1.0.10/index.html.gz.b64.part1 \
+              stable-1.0.10/index.html.gz.b64.part2 \
+              stable-1.0.10/index.html.gz.b64.part3 \
+            | base64 --decode | gzip -d > "$PROJECT_DIR/app/src/main/assets/index.html"
 
-          p = Path(os.environ["PROJECT_DIR"]) / "app/src/main/assets/index.html"
-          s = p.read_text(encoding="utf-8")
-
-          # 1) Make product-sheet close button independent from delegated listeners.
-          s = s.replace(
-              '<button class="sheet-close" data-close-modal type="button">×</button>',
-              '<button class="sheet-close" data-close-modal type="button" onclick="closeDetail();return false;" ontouchstart="closeDetail();return false;" aria-label="Fermer">×</button>'
-          )
-
-          # Add a capture-phase fallback for touch/pointer events in Android WebView.
-          needle = "$('[data-close-modal]').forEach(x=>x.addEventListener('click',closeDetail));"
-          replacement = needle + "\n document.addEventListener('pointerdown',e=>{const close=e.target.closest?.('[data-close-modal]');if(close){e.preventDefault();e.stopPropagation();closeDetail();}},true);\n document.addEventListener('touchstart',e=>{const close=e.target.closest?.('[data-close-modal]');if(close){e.preventDefault();e.stopPropagation();closeDetail();}},{capture:true,passive:false});"
-          if needle in s and "pointerdown',e=>" not in s:
-              s = s.replace(needle, replacement, 1)
-
-          # 2) Use the dedicated USV-troc GitHub Pages URL for auth redirects.
-          s = s.replace(
-              "redirectTo:'https://cedxv38-svg.github.io/USV-Match-Analyzer/pwa/'",
-              "redirectTo:'https://cedxv38-svg.github.io/USV-troc/'"
-          )
-
-          # Add emailRedirectTo to sign-up.
-          old = "const {data,error}=await sb.auth.signUp({email,password,options:{data:{full_name,category,cgu_version:CGU_VERSION,cgu_accepted_at:acceptedAt,privacy_version:PRIVACY_VERSION,privacy_seen_at:privacySeenAt}}});"
-          new = "const {data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:'https://cedxv38-svg.github.io/USV-troc/',data:{full_name,category,cgu_version:CGU_VERSION,cgu_accepted_at:acceptedAt,privacy_version:PRIVACY_VERSION,privacy_seen_at:privacySeenAt}}});"
-          s = s.replace(old,new)
-
-          # Add resend confirmation button to auth screen if absent.
-          auth_btn = '<button id="forgotPasswordBtn" class="btn soft wide" type="button" style="margin-top:8px">Mot de passe oublié ?</button>'
-          resend_btn = auth_btn + '\n      <button id="resendConfirmBtn" class="btn soft wide hidden" type="button" style="margin-top:8px">Renvoyer l\'e-mail de confirmation</button>'
-          if 'id="resendConfirmBtn"' not in s:
-              s = s.replace(auth_btn, resend_btn)
-
-          # Bind resend button.
-          bind = "$('#forgotPasswordBtn').addEventListener('click',forgotPassword);"
-          bind_new = bind + "\n $('#resendConfirmBtn')?.addEventListener('click',resendConfirmation);"
-          if "resendConfirmation" not in s:
-              s = s.replace(bind, bind_new, 1)
-
-          # Show resend button after register, hide in login mode.
-          mode_line = "$('#forgotPasswordBtn').classList.toggle('hidden',register);"
-          if mode_line not in s:
-              target = "$('#rememberLine')?.classList.toggle('hidden',register);"
-              s = s.replace(target, target + "\n $('#forgotPasswordBtn')?.classList.toggle('hidden',register);\n $('#resendConfirmBtn')?.classList.toggle('hidden',!register);")
-
-          # Function to resend signup confirmation.
-          fn_marker = "async function forgotPassword(){"
-          if "async function resendConfirmation()" not in s:
-              resend_fn = "async function resendConfirmation(){\\n const email=$('#authEmail').value.trim();\\n if(!email || !/^\\\\S+@\\\\S+\\\\.\\\\S+$/.test(email)) return alertBox($('#authAlert'),'Saisissez votre adresse e-mail.','err');\\n const btn=$('#resendConfirmBtn'); setBusy(btn,true,'Envoi…');\\n try{\\n   const {error}=await sb.auth.resend({type:'signup',email,options:{emailRedirectTo:'https://cedxv38-svg.github.io/USV-troc/'}});\\n   if(error) throw error;\\n   alertBox($('#authAlert'),'E-mail de confirmation renvoyé. Vérifiez aussi les spams.','ok');\\n }catch(e){\\n   alertBox($('#authAlert'),e.message||'Impossible de renvoyer l’e-mail de confirmation.','err');\\n }finally{ setBusy(btn,false); }\\n}\\n\\n"
-              s = s.replace(fn_marker, resend_fn + fn_marker, 1)
-
-          # After signup, make resend visible.
-          success = "alertBox($('#authAlert'),'Compte créé. Vérifiez votre e-mail si une confirmation est demandée.','ok');"
-          success_new = "alertBox($('#authAlert'),'Compte créé. Un e-mail de confirmation a été demandé. Vérifiez votre boîte de réception et les spams.','ok'); $('#resendConfirmBtn')?.classList.remove('hidden');"
-          s = s.replace(success, success_new)
-
-          # Fix UI binding typo that can abort bindUI() in Android WebView.
-          s = s.replace("$('[data-close-privacy]').forEach", "$('[data-close-privacy]').forEach")
-
-          # Direct fallback binding for the login/register submit button.
-          s = s.replace(
-              '<button id="authSubmit" class="btn primary wide" type="button">Se connecter</button>',
-              '<button id="authSubmit" class="btn primary wide" type="button" onclick="authSubmit();return false;">Se connecter</button>'
-          )
-
-          # Make server-unavailable state explicit instead of silently doing nothing.
-          s = s.replace(
-              "if(!onlineReady) return alertBox($('#authAlert'),'La version réelle doit être reliée au serveur USV avant la première connexion.','info');",
-              "if(!onlineReady) return alertBox($('#authAlert'),'Connexion au serveur USV indisponible. Fermez puis rouvrez l’application et réessayez.','err');"
-          )
-
-          # Make auth controls work even if bindUI/DOMContentLoaded is missed in Android WebView.
-          s = s.replace(
-              '<button id="tabLogin" class="active" type="button">Connexion</button>',
-              '<button id="tabLogin" class="active" type="button" onclick="window.USVTrocUI&&window.USVTrocUI.setAuthMode(false);return false;">Connexion</button>'
-          )
-          s = s.replace(
-              '<button id="tabRegister" type="button">Créer un compte</button>',
-              '<button id="tabRegister" type="button" onclick="window.USVTrocUI&&window.USVTrocUI.setAuthMode(true);return false;">Créer un compte</button>'
-          )
-          s = s.replace(
-              '<button id="authSubmit" class="btn primary wide" type="button" onclick="authSubmit();return false;">Se connecter</button>',
-              '<button id="authSubmit" class="btn primary wide" type="button" onclick="window.USVTrocUI&&window.USVTrocUI.authSubmit();return false;">Se connecter</button>'
-          )
-          s = s.replace(
-              '<button id="authSubmit" class="btn primary wide" type="button">Se connecter</button>',
-              '<button id="authSubmit" class="btn primary wide" type="button" onclick="window.USVTrocUI&&window.USVTrocUI.authSubmit();return false;">Se connecter</button>'
-          )
-          s = s.replace(
-              '<button id="forgotPasswordBtn" class="btn soft wide" type="button" style="margin-top:8px">Mot de passe oublié ?</button>',
-              '<button id="forgotPasswordBtn" class="btn soft wide" type="button" style="margin-top:8px" onclick="window.USVTrocUI&&window.USVTrocUI.forgotPassword();return false;">Mot de passe oublié ?</button>'
-          )
-
-          # Force touchability/z-index of auth controls on Android WebView.
-          s = s.replace(
-              '.checkline input{margin-top:2px}',
-              '.checkline input{margin-top:2px}.auth-card button,.auth-card input,.auth-card select,.auth-card label{position:relative;z-index:5;pointer-events:auto!important;touch-action:manipulation}.auth-card{position:relative;z-index:2}'
-          )
-
-          # Expose auth functions globally and make boot robust.
-          s = s.replace(
-              "window.addEventListener('DOMContentLoaded',boot);",
-              "window.USVTrocUI={authSubmit,setAuthMode,forgotPassword};\nlet __usvBootDone=false;async function __startUSV(){if(__usvBootDone)return;__usvBootDone=true;try{await boot();}catch(e){console.error('USV boot error',e);const a=document.getElementById('authAlert');if(a)a.innerHTML='<div class=\\\"alert err\\\">Erreur de démarrage de l’application. Fermez puis rouvrez l’application.</div>';}}\nif(document.readyState==='loading')document.addEventListener('DOMContentLoaded',__startUSV,{once:true});else setTimeout(__startUSV,0);setTimeout(__startUSV,500);"
-          )
-
-          # Add visible version for field testing.
-          s = s.replace(
-              '<p class="microcopy">L\'accès définitif est réservé aux membres et familles de l\'USV.</p>',
-              '<p class="microcopy">L\'accès définitif est réservé aux membres et familles de l\'USV.<br><small>Version 1.0.22</small></p>'
-          )
-
-          # Proven fixes: these two selector typos abort bindUI() and disable later buttons.
-          s = s.replace("$('[data-close-privacy]').forEach", "$('[data-close-privacy]').forEach")
-          s = s.replace("$('[data-reply-message]').forEach", "$('[data-reply-message]').forEach")
-
-          # Field-test marker
-          s = s.replace('Version 1.0.22','Version 1.0.24')
-
-          p.write_text(s, encoding="utf-8")
-          print("Patched:", p)
-          PY
-
-      - name: Bundle Supabase client locally for Android WebView
-        shell: bash
-        run: |
-          ASSET_DIR="$PROJECT_DIR/app/src/main/assets"
-          curl -fL --retry 3 --retry-delay 2 \
-            "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" \
-            -o "$ASSET_DIR/supabase.js"
-          test -s "$ASSET_DIR/supabase.js"
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-          p = Path(os.environ["PROJECT_DIR"]) / "app/src/main/assets/index.html"
-          s = p.read_text(encoding="utf-8")
-          s = s.replace(
-              '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>',
-              '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="this.onerror=null;this.src=\'./supabase.js\'"></script>'
-          )
-          p.write_text(s, encoding="utf-8")
-          print("Supabase JS bundled locally:", p)
-          PY
+          test -s "$PROJECT_DIR/app/src/main/assets/index.html"
+          grep -Fq "USV Troc" "$PROJECT_DIR/app/src/main/assets/index.html"
+          grep -Fq "id=\"authSubmit\"" "$PROJECT_DIR/app/src/main/assets/index.html"
+          grep -Fq "data-close-modal" "$PROJECT_DIR/app/src/main/assets/index.html"
+          grep -Fq "https://vhdwflcxjrecvzlwlbft.supabase.co" "$PROJECT_DIR/app/src/main/assets/index.html"
+          echo "Stable 1.0.10 interface restored"
 
       - name: Restore upload keystore
         shell: bash
@@ -200,7 +62,7 @@ jobs:
           test -s "$GITHUB_WORKSPACE/usv-troc-upload.jks"
           keytool -list -keystore "$GITHUB_WORKSPACE/usv-troc-upload.jks" -storepass "$USV_STORE_PASSWORD" -alias "$USV_KEY_ALIAS"
 
-      - name: Rebuild native architecture from production 1.0.10
+      - name: Rebuild native Android shell
         shell: bash
         run: |
           cat > "$PROJECT_DIR/build.gradle" <<'EOF'
@@ -226,8 +88,8 @@ jobs:
                   applicationId 'fr.usv.troc'
                   minSdk 26
                   targetSdk 36
-                  versionCode 25
-                  versionName '1.0.24'
+                  versionCode 26
+                  versionName '1.0.25'
               }
 
               signingConfigs {
@@ -341,14 +203,8 @@ jobs:
 
               @Override
               public void onBackPressed() {
-                  webView.evaluateJavascript(
-                      "(function(){var m=document.querySelector('#detailModal:not(.hidden),#rulesModal:not(.hidden),#privacyModal:not(.hidden)');"+
-                      "if(m){var b=m.querySelector('.sheet-close,[data-close-modal],[data-close-rules],[data-close-privacy]');if(b){b.click();return 'closed';}}return 'none';})()",
-                      value -> {
-                          if ("\"closed\"".equals(value)) return;
-                          if (webView.canGoBack()) webView.goBack(); else MainActivity.super.onBackPressed();
-                      }
-                  );
+                  if (webView.canGoBack()) webView.goBack();
+                  else super.onBackPressed();
               }
           }
           EOF
@@ -416,7 +272,7 @@ jobs:
           cd "$PROJECT_DIR"
           gradle --no-daemon clean bundleRelease --stacktrace
 
-      - name: Inspect and verify AAB
+      - name: Verify AAB contents
         shell: bash
         run: |
           AAB="$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab"
@@ -428,7 +284,7 @@ jobs:
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
-          name: USV-Troc-v1.0.24-code25-API36-from-1.0.10
+          name: USV-Troc-v1.0.25-code26-API36-stable-1.0.10
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 30
@@ -437,9 +293,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p releases
-          cp "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab" "releases/USV-Troc-v1.0.24-code25-API36.aab"
+          cp "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab" "releases/USV-Troc-v1.0.25-code26-API36-STABLE.aab"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/USV-Troc-v1.0.24-code25-API36.aab
-          git commit -m "Publish USV Troc 1.0.24 code 25 API36 from 1.0.10 base" || exit 0
+          git add releases/USV-Troc-v1.0.25-code26-API36-STABLE.aab
+          git commit -m "Publish USV Troc 1.0.25 code 26 from exact stable 1.0.10 interface" || exit 0
           git push
