@@ -219,6 +219,40 @@ jobs:
           print("Supabase JS bundled locally:", p)
           PY
 
+      - name: Validate web UI before Android build
+        shell: bash
+        run: |
+          HTML="$PROJECT_DIR/app/src/main/assets/index.html"
+          test -s "$HTML"
+
+          # Known fatal UI-binding mistakes must be gone.
+          ! grep -Fq "$('[data-close-privacy]').forEach" "$HTML"
+          ! grep -Fq "$('[data-reply-message]').forEach" "$HTML"
+
+          # Critical auth controls must have direct Android fallbacks.
+          grep -Fq 'id="authSubmit"' "$HTML"
+          grep -Fq 'window.USVTrocUI' "$HTML"
+          grep -Fq 'id="tabRegister"' "$HTML"
+          grep -Fq 'id="forgotPasswordBtn"' "$HTML"
+
+          # Check every inline JavaScript block for syntax errors with Node.
+          python3 - <<'PY'
+          import os,re,pathlib
+          p=pathlib.Path(os.environ["PROJECT_DIR"])/"app/src/main/assets/index.html"
+          s=p.read_text(encoding="utf-8")
+          blocks=[]
+          for m in re.finditer(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>',s,re.I|re.S):
+              blocks.append(m.group(1))
+          out=pathlib.Path("/tmp/usv_js")
+          out.mkdir(exist_ok=True)
+          for i,b in enumerate(blocks):
+              (out/f"block_{i}.js").write_text(b,encoding="utf-8")
+          print("inline blocks:",len(blocks))
+          PY
+          for f in /tmp/usv_js/*.js; do node --check "$f"; done
+
+          echo "UI validation OK"
+
       - name: Restore upload keystore
         shell: bash
         env:
