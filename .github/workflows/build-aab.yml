@@ -156,6 +156,76 @@ jobs:
               '<p class="microcopy">L\'accès définitif est réservé aux membres et familles de l\'USV.<br><small>Version 1.0.22</small></p>'
           )
 
+          # GLOBAL Android WebView interaction hardening for all app controls.
+          global_css = """
+<style id="android-touch-fix">
+button,a,[role="button"],input,select,textarea,label,.btn,.tab,.sheet-close,[data-close-modal],[data-close-rules],[data-close-privacy],[data-action]{
+  pointer-events:auto!important;
+  touch-action:manipulation!important;
+  -webkit-tap-highlight-color:rgba(0,0,0,0)!important;
+}
+button,a,[role="button"],.btn,.tab,.sheet-close{position:relative!important;z-index:50!important}
+.modal,.sheet,.auth-card,.panel,.card{pointer-events:auto!important}
+.hidden{pointer-events:none!important}
+</style>
+"""
+          if 'id="android-touch-fix"' not in s:
+              s = s.replace('</head>', global_css + '\n</head>', 1)
+
+          # Generic capture fallback: turn touch/pointer events into click for interactive elements
+          # when Android WebView swallows the native click event.
+          fallback_js = r"""
+<script id="android-touch-fallback">
+(function(){
+  const SEL='button,a,[role="button"],.btn,.tab,.sheet-close,[data-close-modal],[data-close-rules],[data-close-privacy],[data-action]';
+  let lastTarget=null,lastTime=0;
+  function fire(el,e){
+    if(!el || el.disabled) return;
+    const now=Date.now();
+    if(lastTarget===el && now-lastTime<350) return;
+    lastTarget=el; lastTime=now;
+    try{
+      if(e){e.preventDefault();e.stopPropagation();}
+      if(typeof el.onclick==='function'){ el.onclick.call(el,e||new Event('click')); return; }
+      el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
+    }catch(err){console.error('android touch fallback',err);}
+  }
+  document.addEventListener('pointerup',function(e){
+    const el=e.target.closest&&e.target.closest(SEL);
+    if(el) fire(el,e);
+  },true);
+  document.addEventListener('touchend',function(e){
+    const t=e.changedTouches&&e.changedTouches[0];
+    const el=document.elementFromPoint(t?t.clientX:0,t?t.clientY:0);
+    const hit=el&&el.closest&&el.closest(SEL);
+    if(hit) fire(hit,e);
+  },{capture:true,passive:false});
+})();
+</script>
+"""
+          if 'id="android-touch-fallback"' not in s:
+              s = s.replace('</body>', fallback_js + '\n</body>', 1)
+
+          # Ensure common primary actions have direct inline fallbacks.
+          replacements = {
+            'id="authSubmit"': 'id="authSubmit" onclick="window.USVTrocUI&&window.USVTrocUI.authSubmit();return false;"',
+            'id="tabLogin"': 'id="tabLogin" onclick="window.USVTrocUI&&window.USVTrocUI.setAuthMode(false);return false;"',
+            'id="tabRegister"': 'id="tabRegister" onclick="window.USVTrocUI&&window.USVTrocUI.setAuthMode(true);return false;"',
+            'id="forgotPasswordBtn"': 'id="forgotPasswordBtn" onclick="window.USVTrocUI&&window.USVTrocUI.forgotPassword();return false;"',
+          }
+          for old,new in replacements.items():
+              if old in s and new not in s:
+                  s=s.replace(old,new,1)
+
+          # Make detail close button self-contained.
+          s=s.replace(
+            '<button class="sheet-close" data-close-modal type="button">×</button>',
+            '<button class="sheet-close" data-close-modal type="button" onclick="if(typeof closeDetail===\'function\')closeDetail();else this.closest(\'.sheet,.modal\')?.classList.add(\'hidden\');return false;" aria-label="Fermer">×</button>'
+          )
+
+          # Visible build marker.
+          s=s.replace('Version 1.0.22','Version 1.0.23')
+
           p.write_text(s, encoding="utf-8")
           print("Patched:", p)
           PY
@@ -219,8 +289,8 @@ jobs:
                   applicationId 'fr.usv.troc'
                   minSdk 26
                   targetSdk 36
-                  versionCode 23
-                  versionName '1.0.22'
+                  versionCode 24
+                  versionName '1.0.23'
               }
 
               signingConfigs {
@@ -421,7 +491,7 @@ jobs:
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
-          name: USV-Troc-v1.0.22-code23-API36-from-1.0.10
+          name: USV-Troc-v1.0.23-code24-API36-from-1.0.10
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 30
@@ -430,9 +500,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p releases
-          cp "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab" "releases/USV-Troc-v1.0.22-code23-API36.aab"
+          cp "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab" "releases/USV-Troc-v1.0.23-code24-API36.aab"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/USV-Troc-v1.0.22-code23-API36.aab
-          git commit -m "Publish USV Troc 1.0.22 code 23 API36 from 1.0.10 base" || exit 0
+          git add releases/USV-Troc-v1.0.23-code24-API36.aab
+          git commit -m "Publish USV Troc 1.0.23 code 24 API36 from 1.0.10 base" || exit 0
           git push
