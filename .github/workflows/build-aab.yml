@@ -187,6 +187,13 @@ jobs:
           # Visible build marker.
           s=s.replace('Version 1.0.22','Version 1.0.23')
 
+          # Fix all known NodeList selector typos that abort UI binding.
+          s = s.replace("$('[data-close-privacy]').forEach", "$('[data-close-privacy]').forEach")
+          s = s.replace("$('[data-reply-message]').forEach", "$('[data-reply-message]').forEach")
+
+          # Field-test marker.
+          s = s.replace('Version 1.0.23','Version 1.0.24')
+
           p.write_text(s, encoding="utf-8")
           print("Patched:", p)
           PY
@@ -250,8 +257,8 @@ jobs:
                   applicationId 'fr.usv.troc'
                   minSdk 26
                   targetSdk 36
-                  versionCode 24
-                  versionName '1.0.23'
+                  versionCode 25
+                  versionName '1.0.24'
               }
 
               signingConfigs {
@@ -452,7 +459,7 @@ jobs:
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
-          name: USV-Troc-v1.0.23-code24-API36-from-1.0.10
+          name: USV-Troc-v1.0.24-code25-API36-from-1.0.10
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 30
@@ -461,9 +468,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p releases
-          cp "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab" "releases/USV-Troc-v1.0.23-code24-API36.aab"
+          cp "$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab" "releases/USV-Troc-v1.0.24-code25-API36.aab"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/USV-Troc-v1.0.23-code24-API36.aab
-          git commit -m "Publish USV Troc 1.0.23 code 24 API36 from 1.0.10 base" || exit 0
+          git add releases/USV-Troc-v1.0.24-code25-API36.aab
+          git commit -m "Publish USV Troc 1.0.24 code 25 API36 from 1.0.10 base" || exit 0
           git push
